@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Sísmico - UFRJ Big Data</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .dashboard-header { background-color: #0f2027; color: white; padding: 20px 0; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .card { border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .table th { background-color: #e9ecef; }
+        .status-badge { padding: 5px 10px; border-radius: 15px; color: white; font-weight: bold; font-size: 0.85em; }
+        .pulse { animation: blinker 2s linear infinite; color: #dc3545; font-weight: bold;}
+        @keyframes blinker { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-header text-center">
+        <h2>📡 Mapeamento Sísmico de Subsolo (IoT)</h2>
+        <p class="mb-0">MBA Engenharia de Software UFRJ (Turma 41)</p>
+    </div>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card p-3 text-center">
+                    <h5 class="text-muted">Status do Datalake</h5>
+                    <h3 id="sys-status" class="text-success">Conectando...</h3>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card p-3">
+                    <h5 class="text-danger pulse">⚠️ Alertas de Alta Probabilidade (Camada Gold)</h5>
+                    <div id="alerts-container">Aguardando descobertas...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-4">
+            <h4>Sensores Ativos (Tempo Real)</h4>
+            <div class="table-responsive">
+                <table class="table table-hover mt-3">
+                    <thead>
+                        <tr>
+                            <th>Nó do Sensor</th>
+                            <th>Sítio / Bacia</th>
+                            <th>Amplitude (dB)</th>
+                            <th>Sinal/Ruído (SNR)</th>
+                            <th>Status da Análise</th>
+                        </tr>
+                    </thead>
+                    <tbody id="seismic-table-body">
+                        <tr><td colspan="5" class="text-center text-muted">Aguardando processamento do Spark...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Função para buscar os dados da API Flask
+        async function fetchSeismicData() {
+            try {
+                // Busca dados processados (Camada Silver)
+                const resCurrent = await fetch('/api/v1/seismic/current');
+                const dataCurrent = await resCurrent.json();
+                
+                if (dataCurrent.status === "success" && dataCurrent.payload.length > 0) {
+                    document.getElementById('sys-status').innerText = "ONLINE & PROCESSANDO";
+                    
+                    let rows = '';
+                    dataCurrent.payload.forEach(item => {
+                        rows += `
+                            <tr>
+                                <td><strong>${item.sensor_node}</strong></td>
+                                <td>${item.target_site} <br><small class="text-muted">${item.basin_region}</small></td>
+                                <td>${item.mean_amplitude.toFixed(2)} dB</td>
+                                <td>${item.mean_snr.toFixed(2)}</td>
+                                <td>
+                                    <span class="status-badge" style="background-color: ${item.analysis.hex_color}">
+                                        ${item.analysis.label}
+                                    </span>
+                                    <br><small class="text-muted">${item.analysis.desc}</small>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    document.getElementById('seismic-table-body').innerHTML = rows;
+                }
+
+                // Busca dados de anomalias (Camada Gold)
+                const resGold = await fetch('/api/v1/seismic/discoveries');
+                const dataGold = await resGold.json();
+                
+                if (dataGold.status === "success" && dataGold.payload.length > 0) {
+                    // Pega as descobertas únicas mais recentes
+                    const uniqueSites = [...new Set(dataGold.payload.map(item => item.target_site))];
+                    document.getElementById('alerts-container').innerHTML = `Assinatura de hidrocarboneto detectada em: <strong>${uniqueSites.join(', ')}</strong>. Recomenda-se envio de sonda.`;
+                }
+
+            } catch (error) {
+                console.error("Erro ao buscar dados:", error);
+            }
+        }
+
+        // Executa a função imediatamente e depois a cada 3 segundos (3000 ms)
+        fetchSeismicData();
+        setInterval(fetchSeismicData, 3000);
+    </script>
+</body>
+</html>
